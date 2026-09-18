@@ -100,6 +100,8 @@ test('daily Nepal-time windows and total usage limits are enforced', async () =>
   const inserted = await db.run(`INSERT INTO promotions
     (name, discount_type, discount_value, scope, channels, auto_apply, is_active, daily_start_time, daily_end_time, usage_limit)
     VALUES ('Lunch', 'percent', 10, 'order', '["pos"]', 1, 1, '11:00', '13:00', 1)`)
+  // 06:15 UTC = 12:00 Nepal — exclusive end means off at 12:00 for an 11–13 window? 
+  // 11:00–13:00 NPT: 06:15 UTC = 12:00 NPT which is inside [11:00, 13:00).
   const lunch = await evaluatePromotion(db, { channel: 'pos', items: [{ subtotal: 500 }], now: new Date('2026-08-31T06:15:00Z') })
   assert.equal(lunch.discount, 50)
   await recordPromotionRedemption(db, { promotion: lunch, orderId: 1, channel: 'pos' })
@@ -107,10 +109,13 @@ test('daily Nepal-time windows and total usage limits are enforced', async () =>
   assert.equal(exhausted, null)
   const outside = await recalculatePromotionById(db, { promotionId: inserted.lastInsertRowid, channel: 'pos', items: [{ subtotal: 500 }] })
   assert.equal(outside.discount, 50)
+  // Outside the daily window → evaluate returns null (POS-style apply path).
+  const beforeOpen = await evaluatePromotion(db, { channel: 'pos', items: [{ subtotal: 500 }], now: new Date('2026-08-31T04:30:00Z') })
+  assert.equal(beforeOpen, null)
   raw.close()
 })
 
-test('active promotion cards and badges stay visible outside redemption hours', async () => {
+test('menu badges only show while the offer is inside its daily window', async () => {
   const raw = new DatabaseSync(':memory:')
   raw.exec('CREATE TABLE orders (id INTEGER PRIMARY KEY); CREATE TABLE bills (id INTEGER PRIMARY KEY);')
   const db = {
@@ -121,9 +126,14 @@ test('active promotion cards and badges stay visible outside redemption hours', 
   }
   await ensurePromotionSchema(db)
   await db.run(`INSERT INTO promotions
-    (name, discount_type, discount_value, scope, channels, auto_apply, is_active, starts_at, daily_start_time, daily_end_time)
-    VALUES ('Always published', 'percent', 15, 'order', '["website","pos"]', 1, 1, '2099-01-01', '01:00', '01:05')`)
-  assert.equal((await listScheduledWebsitePromotions(db, { now: new Date('2026-09-09T00:00:00Z') })).length, 1)
-  assert.equal((await listBadgePromotions(db, { channel: 'pos', now: new Date('2026-09-09T00:00:00Z') })).length, 1)
+    (name, discount_type, discount_value, scope, channels, auto_apply, is_active, daily_start_time, daily_end_time)
+    VALUES ('Morning only', 'percent', 25, 'order', '["website","pos"]', 1, 1, '07:00', '12:00')`)
+  // 01:30 UTC = 07:15 Nepal — inside window
+  assert.equal((await listBadgePromotions(db, { channel: 'pos', now: new Date('2026-09-09T01:30:00Z') })).length, 1)
+  // 06:30 UTC = 12:15 Nepal — exclusive end, badge hidden
+  assert.equal((await listBadgePromotions(db, { channel: 'pos', now: new Date('2026-09-09T06:30:00Z') })).length, 0)
+  // Website marketing list still returns active rows when forMarketing is false
+  assert.equal((await listScheduledWebsitePromotions(db, { now: new Date('2026-09-09T06:30:00Z') })).length, 1)
+  assert.equal((await listScheduledWebsitePromotions(db, { now: new Date('2026-09-09T06:30:00Z'), forMarketing: true })).length, 0)
   raw.close()
 })

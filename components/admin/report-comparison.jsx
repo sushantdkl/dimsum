@@ -15,6 +15,7 @@ import PurchaseDrawer from '@/components/purchases/purchase-drawer.jsx';
 import ExpenseDrawer from '@/components/expenses/expense-drawer.jsx';
 import { REPORT_CATALOG, REPORT_PERIODS, reportMeta } from '@/components/admin/report-catalog.jsx';
 import { formatCalendarRangeLabel } from '@/lib/calendar-system.js';
+import { useCalendarSystem } from '@/lib/calendar-context.jsx';
 import { orderTypeLabel } from '@/lib/order-types.js';
 import { comparisonTables } from '@/lib/report-shape.js';
 
@@ -27,9 +28,10 @@ function validReport(value, fallback) {
 }
 
 function useReportData({ report, period, custom, filters, withOptions, tablePages, tablePageSizes, revision }) {
+  const { calendarSystem } = useCalendarSystem();
   const [state, setState] = useState({ data: null, error: null, loading: true });
   const query = useMemo(() => {
-    const params = new URLSearchParams({ tab: report, period, detail_limit: '8' });
+    const params = new URLSearchParams({ tab: report, period, detail_limit: '8', calendarSystem });
     if (withOptions) params.set('withOptions', '1');
     if (period === 'custom' && custom.start && custom.end) {
       params.set('startDate', custom.start);
@@ -41,7 +43,7 @@ function useReportData({ report, period, custom, filters, withOptions, tablePage
     if (Object.keys(tablePages).length) params.set('table_pages', JSON.stringify(tablePages));
     if (Object.keys(tablePageSizes).length) params.set('table_page_sizes', JSON.stringify(tablePageSizes));
     return params.toString();
-  }, [custom.end, custom.start, filters, period, report, tablePageSizes, tablePages, withOptions]);
+  }, [calendarSystem, custom.end, custom.start, filters, period, report, tablePageSizes, tablePages, withOptions]);
 
   useEffect(() => {
     if (period === 'custom' && (!custom.start || !custom.end)) {

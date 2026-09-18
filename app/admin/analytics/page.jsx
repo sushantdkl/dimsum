@@ -15,6 +15,7 @@ import { formatNepalDate } from '@/lib/time-utils.js';
 import { orderTypeLabel } from '@/lib/order-types.js';
 import DateInput from '@/components/ui/date-input.jsx';
 import { formatCalendarRangeLabel } from '@/lib/calendar-system.js';
+import { useCalendarSystem } from '@/lib/calendar-context.jsx';
 
 const PERIODS = [
   ['today', 'Today'], ['yesterday', 'Yesterday'], ['last3', 'Last 3 Days'],
@@ -27,6 +28,7 @@ function todayNepal() {
 }
 
 export default function AnalyticsPage() {
+  const { calendarSystem } = useCalendarSystem();
   const pathname = usePathname();
   const panelPrefix = pathname?.startsWith('/cashier') ? '/cashier' : '/admin';
   const [period, setPeriod] = useState('today');
@@ -44,6 +46,7 @@ export default function AnalyticsPage() {
     try {
       const params = new URLSearchParams({
         period,
+        calendarSystem,
         transactionPage: String(transactionPage),
         transactionPageSize: String(transactionPageSize),
       });
@@ -61,7 +64,7 @@ export default function AnalyticsPage() {
     } finally {
       setLoading(false);
     }
-  }, [period, startDate, endDate, transactionPage, transactionPageSize]);
+  }, [period, startDate, endDate, transactionPage, transactionPageSize, calendarSystem]);
 
   useEffect(() => { loadOverview(); }, [loadOverview]);
 
@@ -72,7 +75,7 @@ export default function AnalyticsPage() {
 
   const exportTransactions = async () => {
     if (!data) return;
-    const params = new URLSearchParams({ period, export: 'transactions' });
+    const params = new URLSearchParams({ period, export: 'transactions', calendarSystem });
     if (period === 'custom') {
       params.set('startDate', startDate);
       params.set('endDate', endDate);

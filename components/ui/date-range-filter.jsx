@@ -2,6 +2,7 @@
 
 import { resolvePeriodRange } from '@/lib/report-dates.js';
 import DateInput from './date-input.jsx';
+import { useCalendarSystem } from '@/lib/calendar-context.jsx';
 
 const PRESETS = [
   ['today', 'Today'],
@@ -18,13 +19,14 @@ const PRESETS = [
  * means no date filter applied.
  */
 export default function DateRangeFilter({ value, onChange, className = '', compact = false }) {
+  const { calendarSystem } = useCalendarSystem();
   const period = value?.period || '';
   const isCustom = period === 'custom';
 
   const selectPreset = (id) => {
     if (id === period) { onChange({ period: '', from: '', to: '' }); return; }
     if (id === 'custom') { onChange({ period: 'custom', from: value?.from || '', to: value?.to || '' }); return; }
-    const range = resolvePeriodRange(id);
+    const range = resolvePeriodRange(id, null, null, { calendarSystem });
     onChange({ period: id, from: range.start, to: range.end });
   };
 

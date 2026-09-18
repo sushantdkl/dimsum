@@ -24,6 +24,7 @@ import BillPaymentPanel from '@/components/pos/bill-payment-panel';
 import { formatNepalDateTime } from '@/lib/report-dates.js';
 import {
   findPromotionForProduct,
+  isPromotionScheduledNow,
   promotionMenuBadgeLabel,
   sortCombosFirst,
 } from '@/lib/promotion-display.js';
@@ -237,7 +238,8 @@ export default function AdminPos() {
           (promo) =>
             promo.is_active &&
             promo.auto_apply &&
-            (promo.channels || []).includes('pos')
+            (promo.channels || []).includes('pos') &&
+            isPromotionScheduledNow(promo)
         )
       );
     } catch { /* offers are optional chrome on the menu grid */ }
@@ -277,7 +279,7 @@ export default function AdminPos() {
       fetchActiveOffers();
     };
     window.addEventListener('focus', onFocus);
-    // Refresh published offer badges without tying their visibility to the clock.
+    // Re-filter badges when the daily window opens/closes (Nepal schedule).
     const tick = window.setInterval(fetchActiveOffers, 60_000);
     return () => {
       window.removeEventListener('focus', onFocus);
@@ -543,19 +545,65 @@ export default function AdminPos() {
   const amountDue = Math.round((totals.total - alreadyPaid) * 100) / 100;
 
   const checkPromotion = useCallback(async (code = '') => {
-    if (!orderId) return;
+    const lines = orderId
+      ? null
+      : allLines.map((line) => ({
+          menu_item_id: line.menu_item_id || line.item_id || null,
+          variant_name: line.variant_name || null,
+          quantity: line.quantity,
+          price: line.price,
+          is_custom: !line.menu_item_id && !line.item_id,
+        }));
+    if (!orderId && !lines?.length) {
+      setPromotion(null);
+      return;
+    }
     setCouponBusy(true);
     try {
-      const result = await api('/api/admin/promotions/preview', { method: 'POST', body: JSON.stringify({ order_id: orderId, coupon_code: code.trim() }) });
+      const result = await api('/api/admin/promotions/preview', {
+        method: 'POST',
+        body: JSON.stringify({
+          order_id: orderId || undefined,
+          coupon_code: code.trim(),
+          items: lines || undefined,
+        }),
+      });
       setPromotion(result.promotion || null);
       if (code && !result.promotion) notify('This coupon does not apply to this bill.', 'warning');
-    } catch (error) { setPromotion(null); notify(error.message, 'warning'); }
-    finally { setCouponBusy(false); }
-  }, [orderId, notify]);
+    } catch (error) {
+      setPromotion(null);
+      notify(error.message, 'warning');
+    } finally {
+      setCouponBusy(false);
+    }
+  }, [orderId, allLines, notify]);
+
+  // Live cart preview: apply scheduled auto-offers as soon as the cart changes,
+  // not only when the payment modal opens.
+  const cartFingerprint = useMemo(
+    () => allLines.map((line) => `${line.order_item_id || line.local_id}:${line.quantity}:${line.price}`).join('|'),
+    [allLines]
+  );
+  useEffect(() => {
+    if (Number(discount || 0) > 0) {
+      setPromotion(null);
+      return undefined;
+    }
+    if (!orderId && !allLines.length) {
+      setPromotion(null);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => {
+      checkPromotion(couponCode && promotion?.code ? couponCode : '');
+    }, 250);
+    return () => window.clearTimeout(timer);
+    // Intentionally omit promotion/coupon from deps so we don't re-loop when preview sets them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId, cartFingerprint, discount, checkPromotion]);
 
   useEffect(() => {
-    if (showPayment && orderId && Number(discount || 0) === 0 && !promotion) checkPromotion('');
-  }, [showPayment, orderId, discount, promotion, checkPromotion]);
+    if (showPayment && orderId && Number(discount || 0) === 0) checkPromotion(couponCode || '');
+  }, [showPayment, orderId, discount, couponCode, checkPromotion]);
 
   const buildAllocations = useCallback((total) => {
     const amount = (value) => Math.round((Number(value) || 0) * 100) / 100;

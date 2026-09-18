@@ -21,7 +21,8 @@ import { apiJson, apiJsonRaw } from '@/lib/authed-fetch';
 import DataGrid, { StatusBadge } from '@/components/admin/data-grid';
 import useServerList from '@/lib/use-server-list';
 import { KpiCards, ChartCard, ChartGrid, TrendChart, RankBars } from '@/components/admin/report-kit';
-import { nepalDateString } from '@/lib/report-dates.js';
+import { nepalDateString, resolvePeriodRange } from '@/lib/report-dates.js';
+import { useCalendarSystem } from '@/lib/calendar-context.jsx';
 import { formatCalendarDate } from '@/lib/calendar-system.js';
 import LogExpenseModal, { EXPENSE_CATEGORIES } from '@/components/expenses/log-expense-modal';
 import ExpenseDrawer from '@/components/expenses/expense-drawer.jsx';
@@ -87,31 +88,20 @@ const shiftNepalDate = (dateStr, days) => {
   return nepalDateString(cursor);
 };
 
-function rangeFor(preset) {
+function rangeFor(preset, calendarSystem) {
   const today = nepalDateString();
-  const [year, month] = today.split('-').map(Number);
-  const monthStart = (y, m) => `${y}-${String(m).padStart(2, '0')}-01`;
 
   if (preset === 'today') return { from: today, to: today };
   if (preset === 'last7') return { from: shiftNepalDate(today, -6), to: today };
-  if (preset === 'this_month') return { from: monthStart(year, month), to: today };
-  if (preset === 'last_month') {
-    const prevYear = month === 1 ? year - 1 : year;
-    const prevMonth = month === 1 ? 12 : month - 1;
-    return {
-      from: monthStart(prevYear, prevMonth),
-      // Last day of the previous month = the day before this month started.
-      to: shiftNepalDate(monthStart(year, month), -1),
-    };
-  }
-  if (preset === 'quarter') {
-    const quarterStartMonth = Math.floor((month - 1) / 3) * 3 + 1;
-    return { from: monthStart(year, quarterStartMonth), to: today };
+  if (['this_month', 'last_month', 'quarter'].includes(preset)) {
+    const range = resolvePeriodRange(preset, null, null, { calendarSystem });
+    return { from: range.start, to: range.end };
   }
   return { from: '', to: '' };
 }
 
 export default function ExpensesPage() {
+  const { calendarSystem } = useCalendarSystem();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const isCashier = pathname?.startsWith('/cashier');
@@ -129,7 +119,7 @@ export default function ExpensesPage() {
   const [detailsExpense, setDetailsExpense] = useState(null);
   const [managedCats, setManagedCats] = useState([]);
 
-  const { from, to } = datePreset === 'custom' ? { from: customFrom, to: customTo } : rangeFor(datePreset);
+  const { from, to } = datePreset === 'custom' ? { from: customFrom, to: customTo } : rangeFor(datePreset, calendarSystem);
   const selectedPeriod = DATE_PRESETS.find((preset) => preset.value === datePreset)?.label || 'Selected range';
   const rangeLabel = !from || !to
     ? (datePreset === 'all' ? 'All recorded dates' : 'Choose both dates')
@@ -411,12 +401,12 @@ export default function ExpensesPage() {
             }
             return (
               <>
-                <button type="button" title="Edit expense" aria-label="Edit expense" onClick={() => setModal({ expense: e, payroll: e.category === 'salaries' })} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-900">
+                <button type="button" title={e.business_day_status === 'closed' ? 'Correct closed expense' : 'Edit expense'} aria-label={e.business_day_status === 'closed' ? 'Correct closed expense' : 'Edit expense'} onClick={() => setModal({ expense: e, payroll: e.category === 'salaries' })} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-900">
                   <Pencil className="h-4 w-4" />
                 </button>
-                <button type="button" title="Delete expense" aria-label="Delete expense" onClick={() => handleDelete(e)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-red-600">
+                {e.business_day_status !== 'closed' ? <button type="button" title="Delete expense" aria-label="Delete expense" onClick={() => handleDelete(e)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-red-600">
                   <Trash2 className="h-4 w-4" />
-                </button>
+                </button> : null}
               </>
             );
           }}

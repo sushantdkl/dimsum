@@ -58,6 +58,7 @@ export default function ReceiveDeliveryModal({ purchase, items, suppliers, emplo
   const closedDayEdit = editing && purchase?.expense?.business_day_status === 'closed';
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [changeReason, setChangeReason] = useState('');
   const [form, setForm] = useState({
     supplier: purchase?.supplier || '',
     invoice_number: purchase?.invoice_number || '',
@@ -175,10 +176,15 @@ export default function ReceiveDeliveryModal({ purchase, items, suppliers, emplo
       addToast(friendlyMessage('validation', { description: 'Add at least one delivered item with a quantity.' }));
       return;
     }
+    if (closedDayEdit && changeReason.trim().length < 3) {
+      addToast(friendlyMessage('validation', { description: 'Enter a clear reason for correcting this closed purchase.' }));
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
         ...form,
+        change_reason: closedDayEdit ? changeReason.trim() : undefined,
         use_business_funding: useBusinessFunding,
         received_by: form.received_by || null,
         expected_delivery_date: form.expected_delivery_date || null,
@@ -270,7 +276,7 @@ export default function ReceiveDeliveryModal({ purchase, items, suppliers, emplo
               <input value={form.invoice_number} onChange={(e) => set({ invoice_number: e.target.value })} className={adminInputClass} placeholder="Optional" />
             </AdminField>
             <AdminField label="Invoice date" hint="This is the date used in purchase and expense reports.">
-              <DateInput value={form.invoice_date} onChange={(v) => set({ invoice_date: v })} className={adminInputClass} />
+              <DateInput disabled={closedDayEdit} value={form.invoice_date} onChange={(v) => set({ invoice_date: v })} className={adminInputClass} />
             </AdminField>
             <AdminField label="Payment" hint={closedDayEdit ? 'Use Correct payment from the purchase details to reclassify a closed-day payment.' : 'The payment is attributed to the invoice-date business day. On credit books the amount to Accounts Payable.'}>
               <select disabled={closedDayEdit} value={form.payment_method} onChange={(e) => set({ payment_method: e.target.value })} className={`${adminInputClass} disabled:bg-gray-100 disabled:text-gray-500`}>
@@ -296,6 +302,7 @@ export default function ReceiveDeliveryModal({ purchase, items, suppliers, emplo
               audit information.
             </p>
           )}
+          {closedDayEdit ? <AdminField label="Correction reason" hint="Required. Stock is reversed and reapplied; the financial difference is appended without rewriting the closed journal."><textarea rows={3} value={changeReason} onChange={(event) => setChangeReason(event.target.value)} className={adminTextareaClass} placeholder="Why is this closed purchase being corrected?" /></AdminField> : null}
 
           <button
             type="button"

@@ -18,7 +18,8 @@ export async function GET(request) {
     const range = resolvePeriodRange(
       searchParams.get('period') || 'week',
       searchParams.get('startDate'),
-      searchParams.get('endDate')
+      searchParams.get('endDate'),
+      { calendarSystem: searchParams.get('calendarSystem') }
     );
 
     const db = Database.getInstance();

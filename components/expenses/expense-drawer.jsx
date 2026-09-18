@@ -59,6 +59,7 @@ export default function ExpenseDrawer({ expense, category, onClose, onEdit, onCh
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <StatusBadge tone={expense.source_type ? 'violet' : 'gray'}>{expense.source_type ? 'Automatic' : 'Manual'}</StatusBadge>
               <StatusBadge tone={expense.status === 'voided' ? 'red' : 'green'}>{expense.status === 'voided' ? 'Voided' : 'Active'}</StatusBadge>
+              {expense.business_day_status === 'closed' ? <StatusBadge tone="amber">Closed day</StatusBadge> : null}
             </div>
           </div>
           <button type="button" onClick={onClose} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-900" aria-label="Close">
@@ -102,7 +103,7 @@ export default function ExpenseDrawer({ expense, category, onClose, onEdit, onCh
 
         <footer className="sticky bottom-0 flex flex-wrap items-center justify-end gap-2 border-t border-gray-200 bg-white px-5 py-4 sm:px-6">
           {!expense.source_type && canCorrectPayment && expense.status !== 'voided' ? <button type="button" onClick={() => setCorrectingPayment(true)} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-gray-300 px-4 text-sm font-semibold text-gray-700"><WalletCards className="h-4 w-4" /> Correct payment</button> : null}
-          {!expense.source_type && onEdit ? <button type="button" onClick={() => onEdit(expense)} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-gray-950 px-4 text-sm font-semibold text-white"><Pencil className="h-4 w-4" /> Edit expense</button> : null}
+          {!expense.source_type && onEdit ? <button type="button" onClick={() => onEdit(expense)} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-gray-950 px-4 text-sm font-semibold text-white"><Pencil className="h-4 w-4" /> {expense.business_day_status === 'closed' ? 'Correct expense' : 'Edit expense'}</button> : null}
           <button type="button" onClick={onClose} className="min-h-10 rounded-lg border border-gray-300 px-4 text-sm font-semibold text-gray-700">Close</button>
         </footer>
         <PaymentMethodCorrectionDialog

@@ -81,7 +81,19 @@ test('single-day summary includes cash moved between same-day store sessions', a
   });
   await postCash(9035, 'bill');
   await postCash(1100, 'credit_collection');
-  await postCash(1500, 'opening_cash_movement', true);
+  // Mid-day reopen bridge — must still affect closing because day.opening_cash
+  // stays at the morning float. Day-open (store_session_opened) bridges do not.
+  await postJournal(db, {
+    memo: 'opening_cash_movement',
+    source_type: 'opening_cash_movement',
+    external_ref: `opening-cash:${dayId}:store_session_reopened:11090:9590:cash_reserve`,
+    business_day_id: dayId,
+    created_by: actor.id,
+    lines: [
+      { code: '3010', debit: 1500, credit: 0 },
+      { code: '1010', debit: 0, credit: 1500, drawer_id: drawer.id },
+    ],
+  });
   await postCash(5370, 'expense', true);
   await postCash(5000, 'savings_deposit', true);
   await postCash(160, 'exchange', true);
@@ -93,4 +105,53 @@ test('single-day summary includes cash moved between same-day store sessions', a
   assert.equal(summary.cash_flow.closing, 7695);
   assert.equal(summary.money_position.cash.closing, 7695);
   assert.equal(summary.closing.expected_cash, 7695);
+});
+
+test('single-day summary does not double-count day-open bridge when opening is 0', async () => {
+  const thirdDate = '2000-01-03';
+  const inserted = await db.run(
+    `INSERT INTO business_days (business_date,status,opening_cash,expected_cash,counted_cash,cash_difference)
+     VALUES (?,'open',0,NULL,NULL,NULL)`, [thirdDate]
+  );
+  const dayId = inserted.lastInsertRowid;
+  await db.run(
+    `INSERT INTO business_day_sessions
+      (business_day_id,session_number,status,opening_cash)
+     VALUES (?,1,'open',0)`, [dayId]
+  );
+  const drawer = await db.get(`SELECT id FROM cash_drawers WHERE is_active=1 ORDER BY id LIMIT 1`);
+
+  // Prior counted 6965 → declared opening 0. Already reflected in opening_cash=0.
+  await postJournal(db, {
+    memo: 'Opening cash movement - Owner Withdrawal',
+    source_type: 'opening_cash_movement',
+    external_ref: `opening-cash:${dayId}:store_session_opened:6965:0:owner_withdrawal`,
+    business_day_id: dayId,
+    created_by: actor.id,
+    lines: [
+      { code: '3010', debit: 6965, credit: 0 },
+      { code: '1010', debit: 0, credit: 6965, drawer_id: drawer.id },
+    ],
+  });
+  await postJournal(db, {
+    memo: 'Cash sale', source_type: 'bill', business_day_id: dayId, created_by: actor.id,
+    lines: [
+      { code: '1010', debit: 2367.5, credit: 0, drawer_id: drawer.id },
+      { code: '4010', debit: 0, credit: 2367.5 },
+    ],
+  });
+  await postJournal(db, {
+    memo: 'Cash expense', source_type: 'expense', business_day_id: dayId, created_by: actor.id,
+    lines: [
+      { code: '5020', debit: 870, credit: 0 },
+      { code: '1010', debit: 0, credit: 870, drawer_id: drawer.id },
+    ],
+  });
+
+  const summary = await buildSummaryReport(db, { start: thirdDate, end: thirdDate });
+  assert.equal(summary.accounts.cash.opening, 0);
+  assert.equal(summary.accounts.cash.movements.opening_cash_movement, undefined);
+  assert.equal(summary.accounts.cash.closing, 1497.5);
+  assert.equal(summary.cash_flow.closing, 1497.5);
+  assert.equal(summary.money_position.cash.closing, 1497.5);
 });

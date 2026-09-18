@@ -261,6 +261,7 @@ export async function POST(request, { params }) {
         bill_id: bill.id,
         bill_number: bill.bill_number,
         parts,
+        tax_amount,
         created_by: user.id,
         business_day_id: businessDayId,
       });

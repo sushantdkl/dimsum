@@ -147,13 +147,13 @@ test('selecting a business day scopes expenses to that day rather than the calen
   }
 });
 
-test('the monthly revenue chart takes the latest 24 months, then reads oldest-first', async () => {
+test('the monthly revenue chart reads enough newest days for 24 BS months, then reads oldest-first', async () => {
   const db = stubDb();
   await buildReport(db, 'finance', range('2026-08-01', '2026-08-07'), {});
-  const [monthly] = sqlFor(db, 'LIMIT 24');
+  const [monthly] = sqlFor(db, 'LIMIT 800');
   assert.ok(monthly, 'finance tab charts monthly revenue');
-  assert.match(monthly.sql, /ORDER BY month DESC\s+LIMIT 24/, 'the window must be the newest 24 months');
-  assert.match(monthly.sql, /\)\s*recent\s+ORDER BY month ASC/, 'the chart must still read left to right');
+  assert.match(monthly.sql, /ORDER BY day DESC\s+LIMIT 800/, 'the window must cover at least 24 BS months');
+  assert.match(monthly.sql, /\)\s*recent\s+ORDER BY day ASC/, 'the chart must still read left to right');
 });
 
 test('profit is revenue minus operating expenses, and the daily rows add up to it', async () => {

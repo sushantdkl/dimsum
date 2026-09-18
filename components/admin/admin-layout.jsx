@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Warehouse, LayoutGrid, FolderOpen, Menu, X, Inbox, ChefHat, Wallet, Truck, Trash,
   Building2, ChevronDown, Ruler, Layers, TrendingUp, Activity,
   BookOpen, ScrollText, Coins, Landmark, CreditCard, ArrowRightLeft, Undo2, Receipt, Gauge, ClipboardCheck,
-  BarChart3, Globe, ReceiptText, CalendarClock, BellRing, Calendar,
+  BarChart3, Globe, ReceiptText, CalendarClock, BellRing, Calendar, History,
   PiggyBank, ShieldCheck, WalletCards, Bike, Contact, CalendarHeart, CalendarCheck2, Printer, BadgePercent, MessageSquareHeart, Banknote
 } from 'lucide-react';
 import LogoutButton from '@/components/ui/logout-button';
@@ -109,6 +109,7 @@ export default function AdminLayout({ children }) {
   const [ordersBadge, setOrdersBadge] = useState(0);
   const [waiterCallsBadge, setWaiterCallsBadge] = useState(0);
   const [capabilities, setCapabilities] = useState(null);
+  const [panelRole, setPanelRole] = useState(null);
   const [openGroups, setOpenGroups] = useState({});
   const openLockRef = useRef(false);
   const navScrollRef = useRef(null);
@@ -190,7 +191,10 @@ export default function AdminLayout({ children }) {
         ? ['admin', 'cashier'].includes(user.role)
         : user.role === 'admin';
       if (!token || !roleAllowed) router.push('/login');
-      else setLoading(false);
+      else {
+        setPanelRole(user.role);
+        setLoading(false);
+      }
     });
 
     return () => {
@@ -458,6 +462,7 @@ export default function AdminLayout({ children }) {
         { icon: ChefHat, label: 'Menu Report', href: '/admin/reports?tab=menu', color: 'text-orange-700' },
         { icon: Layers, label: 'Category Report', href: '/admin/reports?tab=categories', color: 'text-teal-700' },
         { icon: Contact, label: 'Customers Report', href: '/admin/reports?tab=customers', color: 'text-pink-700' },
+        { icon: History, label: 'Previous-day Activity', href: '/admin/previous-day-activity', color: 'text-indigo-700' },
         { icon: ArrowRightLeft, label: 'Compare Reports', href: '/admin/reports/compare', color: 'text-indigo-700' },
       ],
     },
@@ -578,6 +583,7 @@ export default function AdminLayout({ children }) {
         { icon: ChefHat, label: 'Menu Report', href: '/cashier/reports?tab=menu', color: 'text-orange-700', requiredPermission: 'report.menu.view' },
         { icon: Layers, label: 'Category Report', href: '/cashier/reports?tab=categories', color: 'text-teal-700', requiredPermission: 'report.categories.view' },
         { icon: Contact, label: 'Customers Report', href: '/cashier/reports?tab=customers', color: 'text-pink-700', requiredPermission: 'report.customers.view' },
+        { icon: History, label: 'Previous-day Activity', href: '/cashier/previous-day-activity', color: 'text-indigo-700', requiredPermission: 'report.previous_day.view' },
         { icon: ArrowRightLeft, label: 'Compare Reports', href: '/cashier/reports/compare', color: 'text-indigo-700', requiredPermission: 'reports.view' },
       ],
     },
@@ -909,7 +915,7 @@ export default function AdminLayout({ children }) {
         style={{ '--admin-sidebar-offset': sidebarOpen ? '16rem' : '5rem' }}
       >
         <div className="admin-page-content w-full min-w-0">
-          <CashCountGate active={isCashierPanel}>{children}</CashCountGate>
+          <CashCountGate active={isCashierPanel && panelRole === 'cashier'}>{children}</CashCountGate>
         </div>
       </div>
     </div>

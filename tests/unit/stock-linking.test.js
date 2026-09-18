@@ -120,6 +120,7 @@ test('ensureStockSchema only tops up schema — it writes no data', async () => 
   const db = stubDb();
   await ensureStockSchema(db);
 
+  assert.ok(db.statements.some((s) => /menu_items/i.test(s.sql) && /stock_usage/i.test(s.sql)));
   assert.deepEqual(linkWrites(db), []);
   assert.deepEqual(inventoryInserts(db), []);
 });

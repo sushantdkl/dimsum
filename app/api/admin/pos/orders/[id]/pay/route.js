@@ -20,7 +20,8 @@ import { businessDayIdForFinancialWork } from '@/lib/business-days.js';
 import { ensurePermissionCache, isPermissionAllowedSync } from '@/lib/permissions.js';
 import { ensureOrderColumns } from '@/lib/online-orders.js';
 import { ensureDeliverySchema } from '@/lib/delivery.js';
-import { ensurePromotionSchema, evaluatePromotion, recalculatePromotionById, recordPromotionRedemption } from '@/lib/promotions.js';
+import { ensurePromotionSchema, evaluatePromotion, recalculatePromotionById, recordPromotionRedemption, normalizePromotion } from '@/lib/promotions.js';
+import { isPromotionScheduledNow } from '@/lib/promotion-display.js';
 import { normalizePaymentMethod } from '@/lib/payment-allocations.js';
 
 const round2 = (v) => Math.round((Number(v) + Number.EPSILON) * 100) / 100;
@@ -199,7 +200,29 @@ export async function POST(request, context) {
         const savedPromotionId = Number(order.promotion_id || reopenedBill?.promotion_id || 0);
         const promotionId = requestedPromotionId || savedPromotionId;
         if (promotionId) {
-          promotion = await recalculatePromotionById(tx, { promotionId, items: promotionItems, channel: order.promotion_channel || 'pos' });
+          const stickyRow = await tx.get('SELECT * FROM promotions WHERE id = ?', [promotionId]);
+          const stickyTargets = stickyRow
+            ? await tx.all('SELECT * FROM promotion_targets WHERE promotion_id = ?', [promotionId])
+            : [];
+          const stickyPromo = stickyRow ? normalizePromotion(stickyRow, stickyTargets) : null;
+          // Sticky promotion_id must still be inside its Nepal schedule at pay time.
+          if (stickyPromo && isPromotionScheduledNow(stickyPromo)) {
+            promotion = await recalculatePromotionById(tx, {
+              promotionId,
+              items: promotionItems,
+              channel: order.promotion_channel || 'pos',
+            });
+          }
+          if (!promotion) {
+            promotion = await evaluatePromotion(tx, {
+              items: promotionItems,
+              channel: 'pos',
+              couponCode: data.coupon_code,
+            });
+            if (data.coupon_code && !promotion) {
+              throw Object.assign(new Error('This coupon is invalid or no longer eligible for this bill.'), { status: 400, code: 'coupon_invalid' });
+            }
+          }
         } else {
           promotion = await evaluatePromotion(tx, { items: promotionItems, channel: 'pos', couponCode: data.coupon_code });
           if (data.coupon_code && !promotion) throw Object.assign(new Error('This coupon is invalid or no longer eligible for this bill.'), { status: 400, code: 'coupon_invalid' });

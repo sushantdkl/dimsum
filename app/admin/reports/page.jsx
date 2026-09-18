@@ -14,6 +14,7 @@ import BillInvoiceModal from '@/components/admin/bill-invoice-modal.jsx';
 import PurchaseDrawer from '@/components/purchases/purchase-drawer';
 import ExpenseDrawer from '@/components/expenses/expense-drawer.jsx';
 import { formatCalendarDate, formatCalendarRangeLabel } from '@/lib/calendar-system.js';
+import { useCalendarSystem } from '@/lib/calendar-context.jsx';
 import { REPORT_CATALOG as TABS, REPORT_PERIODS as PERIODS } from '@/components/admin/report-catalog.jsx';
 
 /**
@@ -90,6 +91,7 @@ function tabFromSearchParams(searchParams) {
  * Reading the URL up front + aborting the previous fetch closes that race.
  */
 function ReportsPageInner() {
+  const { calendarSystem } = useCalendarSystem();
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const [tab, setTab] = useState(() => tabFromSearchParams(searchParams));
@@ -143,7 +145,7 @@ function ReportsPageInner() {
   };
 
   const query = useMemo(() => {
-    const params = new URLSearchParams({ tab, period, withOptions: '1' });
+    const params = new URLSearchParams({ tab, period, withOptions: '1', calendarSystem });
     if (period === 'custom' && custom.start && custom.end) {
       params.set('startDate', custom.start);
       params.set('endDate', custom.end);
@@ -160,7 +162,7 @@ function ReportsPageInner() {
       params.set('table_page_sizes', JSON.stringify(tabSizes));
     }
     return params.toString();
-  }, [tab, period, custom.start, custom.end, filters, supported, tablePages, tablePageSizes]);
+  }, [tab, period, custom.start, custom.end, filters, supported, tablePages, tablePageSizes, calendarSystem]);
 
   const customMissing = period === 'custom' && (!custom.start || !custom.end);
   const load = useCallback(async (signal) => {

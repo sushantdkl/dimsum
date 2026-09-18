@@ -127,7 +127,7 @@ export function PaymentFinance({ data }) {
       <div className="mt-5 grid gap-4 rounded-2xl border border-gray-800 bg-gray-950 p-5 text-white sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 sm:p-6">
         {[
           ['Gross Profit', finance.grossProfit], ['Operating Expenses', finance.operatingExpenses], ['Operating Profit', finance.operatingProfit], ['Cash in Hand', finance.cashBalance],
-          ['Bank / Online', finance.bankBalance], ['Receivables', finance.accountsReceivable], ['Payables', finance.accountsPayable], ['COGS', finance.cogs],
+          ['Bank / Online', finance.bankBalance], ['Receivables', finance.accountsReceivable], ['Payables', finance.accountsPayable], ['Purchases', finance.cogs],
         ].map(([label, value]) => {
           const tone = financialTone({ label, value });
           return <div key={label}><p className="text-xs text-gray-400">{label}</p><p className={`mt-1 truncate text-base font-semibold tabular-nums ${tone === 'positive' ? 'text-emerald-400' : tone === 'negative' ? 'text-rose-400' : 'text-white'}`}>{money(value)}</p></div>;

@@ -4,9 +4,9 @@ import { requireAuth, handleRouteError } from '@/lib/api-guard.js';
 import { ensureSqliteTable } from '@/lib/db/ensure-sqlite-table.js';
 import { ensureColumn } from '@/lib/db/schema-helpers.js';
 import { readListParams, resolveOrderBy, buildSearch, paginateQuery } from '@/lib/paginate.js';
-import { currentBusinessDayId } from '@/lib/business-days.js';
+import { businessDayIdForCalendarDate, currentBusinessDayId } from '@/lib/business-days.js';
 import { nepalDateString } from '@/lib/report-dates.js';
-import { correctExpensePaymentMethod, ensureExpenseVoidSchema, voidExpense } from '@/lib/expense-links.js';
+import { correctClosedManualExpense, correctExpensePaymentMethod, ensureExpenseVoidSchema, repairExpenseBusinessDayAlignment, voidExpense } from '@/lib/expense-links.js';
 import { normalizePaymentMethod } from '@/lib/payment-allocations.js';
 
 async function ensureExpensesReady(db) {
@@ -35,6 +35,7 @@ async function ensureExpensesReady(db) {
   await ensureColumn(db, 'expenses', 'source_type', 'TEXT');
   await ensureColumn(db, 'expenses', 'source_id', 'INTEGER');
   await ensureExpenseVoidSchema(db);
+  await repairExpenseBusinessDayAlignment(db);
 }
 
 /**
@@ -184,8 +185,8 @@ export async function GET(request) {
     const where = conditions.join(' AND ');
 
     const { rows, pagination } = await paginateQuery(db, {
-      columns: 'e.*, u.full_name as logged_by_name',
-      from: 'expenses e LEFT JOIN users u ON e.logged_by = u.id',
+      columns: 'e.*, u.full_name as logged_by_name, bd.status as business_day_status, bd.business_date',
+      from: 'expenses e LEFT JOIN users u ON e.logged_by = u.id LEFT JOIN business_days bd ON bd.id=e.business_day_id',
       where,
       params,
       orderBy: resolveOrderBy(sort, dir, EXPENSE_SORTS, 'created_at', 'e.id'),
@@ -212,9 +213,14 @@ export async function POST(request) {
     const data = await request.json();
     const db = Database.getInstance();
     await ensureExpensesReady(db);
-    const businessDayId = await currentBusinessDayId(db, { required: true });
-
+    // An open store session is still required to enter expenses, but the row
+    // and its journal belong to the expense date's business day (purchases do
+    // the same for invoice date).
+    await currentBusinessDayId(db, { required: true });
     const dateVal = data.purchase_date || data.expense_date || nepalDateString();
+    const businessDayId = await businessDayIdForCalendarDate(db, dateVal, {
+      note: 'Historical day created for a late-entered expense.',
+    });
 
     const { ensureAccountingSchema, postExpenseJournal } = await import('@/lib/accounting.js');
     await ensureAccountingSchema(db);
@@ -276,16 +282,27 @@ export async function PUT(request) {
     const data = await request.json();
     const db = Database.getInstance();
     await ensureExpensesReady(db);
-    const businessDayId = await currentBusinessDayId(db, { required: true });
-
     const blocked = await rejectIfLinked(db, data.id);
     if (blocked) return blocked;
-    const existing = await db.get('SELECT business_day_id FROM expenses WHERE id=?', [data.id]);
-    if (Number(existing?.business_day_id || 0) !== Number(businessDayId)) {
-      return NextResponse.json({ error: 'A closed business day expense cannot be edited.' }, { status: 409 });
+    const existing = await db.get(`SELECT e.*,bd.status AS business_day_status FROM expenses e LEFT JOIN business_days bd ON bd.id=e.business_day_id WHERE e.id=?`, [data.id]);
+    if (!existing) return NextResponse.json({ error: 'Expense not found.' }, { status: 404 });
+    if (existing.business_day_status === 'closed') {
+      if (auth.user?.role !== 'admin') return NextResponse.json({ error: 'Only an administrator can correct a closed business day expense.' }, { status: 403 });
+      const corrected = await correctClosedManualExpense(db, { expenseId: data.id, changes: data, reason: data.correction_reason, performedBy: auth.user?.id || null, requestKey: data.request_key, useBusinessFunding: Boolean(data.use_business_funding) });
+      return NextResponse.json({ message: 'Closed expense corrected with an audit trail.', expense: mapExpenseRow(corrected) });
+    }
+    const openDayId = await currentBusinessDayId(db, { required: true });
+    if (Number(existing.business_day_id || 0) !== Number(openDayId)) {
+      return NextResponse.json({ error: 'This expense does not belong to the active business day.' }, { status: 409 });
     }
 
     const dateVal = data.purchase_date || data.expense_date || nepalDateString();
+    const businessDayId = await businessDayIdForCalendarDate(db, dateVal, {
+      note: 'Historical day created for a late-entered expense.',
+    });
+    if (Number(businessDayId) !== Number(existing.business_day_id)) {
+      return NextResponse.json({ error: 'An expense cannot be moved to another business day. Void it and enter the corrected record instead.' }, { status: 409 });
+    }
 
     const expense = await db.transaction(async (tx) => {
       await tx.run(
@@ -293,7 +310,7 @@ export async function PUT(request) {
         UPDATE expenses
         SET description = ?, category = ?, amount = ?,
             expense_date = ?, purchase_date = ?, supplier = ?, notes = ?,
-            payment_method = ?, receipt_url = ?,
+            payment_method = ?, receipt_url = ?, business_day_id = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `,
@@ -307,6 +324,7 @@ export async function PUT(request) {
           data.notes || null,
           normalizePaymentMethod(data.payment_method || 'cash'),
           data.receipt_url || null,
+          businessDayId,
           data.id,
         ]
       );

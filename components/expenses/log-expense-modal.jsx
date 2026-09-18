@@ -50,6 +50,9 @@ export default function LogExpenseModal({ editingExpense, initialCategory, payro
   const { confirm } = useConfirm();
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const closedCorrection = editingExpense?.business_day_status === 'closed';
+  const [correctionReason, setCorrectionReason] = useState('');
+  const [requestKey] = useState(() => typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `expense-correction-${Date.now()}`);
   const [form, setForm] = useState({
     description: editingExpense?.description || '',
     category: editingExpense?.category || initialCategory || (payrollMode ? 'salaries' : 'raw_materials'),
@@ -101,6 +104,10 @@ export default function LogExpenseModal({ editingExpense, initialCategory, payro
       addToast(friendlyMessage('validation', { description: 'Amount must be greater than zero.' }));
       return;
     }
+    if (closedCorrection && correctionReason.trim().length < 3) {
+      addToast(friendlyMessage('validation', { description: 'Enter a clear reason for correcting this closed expense.' }));
+      return;
+    }
 
     setSaving(true);
     try {
@@ -109,7 +116,7 @@ export default function LogExpenseModal({ editingExpense, initialCategory, payro
       const res = await authedRequest(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, id: editingExpense?.id, amount: Number(form.amount), use_business_funding: useBusinessFunding }),
+        body: JSON.stringify({ ...form, id: editingExpense?.id, amount: Number(form.amount), use_business_funding: useBusinessFunding, correction_reason: closedCorrection ? correctionReason.trim() : undefined, request_key: closedCorrection ? requestKey : undefined }),
       });
       const data = await res.json();
       if (!res.ok) throw data;
@@ -138,7 +145,7 @@ export default function LogExpenseModal({ editingExpense, initialCategory, payro
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent onClose={onClose} className={adminDialogMd}>
         <DialogHeader>
-          <DialogTitle>{payrollMode ? 'Add Salary' : editingExpense ? 'Edit Expense' : 'Log New Expense'}</DialogTitle>
+          <DialogTitle>{closedCorrection ? 'Correct Closed Expense' : payrollMode ? 'Add Salary' : editingExpense ? 'Edit Expense' : 'Log New Expense'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className={`mt-6 ${adminFieldStackClass}`}>
           <AdminField label={payrollMode ? 'Salary Title (e.g. "October salary - Bikash")' : 'Expense Title'}>
@@ -169,10 +176,11 @@ export default function LogExpenseModal({ editingExpense, initialCategory, payro
 
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <AdminField label="Date">
-              <DateInput className={adminInputClass} value={form.purchase_date} onChange={(v) => setForm((f) => ({ ...f, purchase_date: v }))} />
+              <DateInput disabled={Boolean(editingExpense)} className={adminInputClass} value={form.purchase_date} onChange={(v) => setForm((f) => ({ ...f, purchase_date: v }))} />
+              {editingExpense ? <p className="mt-1.5 text-xs text-gray-500">Expense dates cannot be moved between business days. Use a dedicated reversal and re-entry for a wrong date.</p> : null}
             </AdminField>
             <AdminField label="Payment Method">
-              <select className={adminInputClass} value={form.payment_method} onChange={(e) => setForm((f) => ({ ...f, payment_method: e.target.value }))}>
+              <select disabled={closedCorrection} className={adminInputClass} value={form.payment_method} onChange={(e) => setForm((f) => ({ ...f, payment_method: e.target.value }))}>
                 {PAYMENT_METHODS.map((m) => (
                   <option key={m.value} value={m.value}>{m.label}</option>
                 ))}
@@ -188,6 +196,7 @@ export default function LogExpenseModal({ editingExpense, initialCategory, payro
           <AdminField label="Notes / Reference No">
             <textarea className={adminTextareaClass} rows={3} value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
           </AdminField>
+          {closedCorrection ? <AdminField label="Correction reason" hint="Required. The original closed-day journal remains intact and the difference is posted as an audited adjustment."><textarea className={adminTextareaClass} rows={3} value={correctionReason} onChange={(e) => setCorrectionReason(e.target.value)} placeholder="Why is this closed expense being corrected?" /></AdminField> : null}
 
           <AdminField label="Upload Receipt / Attachment (optional)">
             {form.receipt_url ? (
@@ -204,7 +213,7 @@ export default function LogExpenseModal({ editingExpense, initialCategory, payro
         </form>
         <DialogFooter>
           <button type="button" onClick={onClose} className={adminBtnSecondary}>Cancel</button>
-          <button type="button" disabled={saving || uploading} onClick={handleSubmit} className={adminBtnPrimary}>{saving ? 'Saving…' : 'Save'}</button>
+          <button type="button" disabled={saving || uploading} onClick={handleSubmit} className={adminBtnPrimary}>{saving ? 'Saving…' : closedCorrection ? 'Save correction' : 'Save'}</button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

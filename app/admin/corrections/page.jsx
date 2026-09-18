@@ -2,13 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import AdminLayout from '@/components/admin/admin-layout';
-import { RotateCcw, Ban, Undo2, AlertTriangle, Loader2, ReceiptText, X, History } from 'lucide-react';
+import { RotateCcw, Ban, Undo2, AlertTriangle, Loader2, ReceiptText, X } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 import { friendlyMessage, friendlyFromError } from '@/lib/friendly-message';
 import { apiJson } from '@/lib/authed-fetch';
 import { money } from '@/components/accounting/ledger-table';
 import { formatNepalTime } from '@/lib/time-utils';
-import { formatNepalDisplay } from '@/lib/report-dates';
 
 const METHODS = ['cash', 'online'];
 
@@ -24,17 +23,9 @@ export default function CorrectionsPage() {
   const [previewError, setPreviewError] = useState('');
   const [confirmation, setConfirmation] = useState(null);
   const [historyDetail, setHistoryDetail] = useState(null);
-  const [historicalActivity, setHistoricalActivity] = useState({ records: [], changes: [] });
-  const [activityDetail, setActivityDetail] = useState(null);
-  const [activityFilters, setActivityFilters] = useState({ from: '', to: '' });
   const keyRef = useRef(newKey());
 
-  const load = (filters = activityFilters) => {
-    const query = new URLSearchParams();
-    if (filters.from) query.set('from', filters.from);
-    if (filters.to) query.set('to', filters.to);
-    const url = `/api/admin/corrections${query.size ? `?${query}` : ''}`;
-    return apiJson(url).then((d) => {
+  const load = () => apiJson('/api/admin/corrections').then((d) => {
     const billHistory = (d.bill_corrections || []).map((row) => ({
       ...row,
       history_id: `bill-${row.id}`,
@@ -43,22 +34,28 @@ export default function CorrectionsPage() {
     // Refunds already have a richer bill-level history row. Include standalone
     // reversals and payment-source reclassifications from the journal feed.
     const reversalHistory = (d.corrections || [])
-      .filter((row) => ['reversal', 'expense_payment_method_correction', 'payment_method_correction'].includes(row.source_type))
+      .filter((row) => ['reversal', 'expense_payment_method_correction', 'expense_edit_correction', 'payment_method_correction'].includes(row.source_type))
       .map((row) => ({
         ...row,
         history_id: `journal-${row.id}`,
         journal_id: row.id,
-        type: row.source_type === 'reversal' ? 'reversal' : 'payment correction',
+        type: row.source_type === 'reversal'
+          ? 'reversal'
+          : row.source_type === 'expense_edit_correction'
+            ? 'edit correction'
+            : 'payment correction',
         reference: row.source_type === 'reversal' ? `Journal #${row.source_id}` : `Journal #${row.id}`,
-        reason: row.memo || (row.source_type === 'reversal' ? 'Journal reversal' : 'Payment method correction'),
+        reason: row.memo || (
+          row.source_type === 'reversal'
+            ? 'Journal reversal'
+            : row.source_type === 'expense_edit_correction'
+              ? 'Closed-day amount correction'
+              : 'Payment method correction'
+        ),
       }));
     setHistory([...billHistory, ...reversalHistory].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))));
-    setHistoricalActivity(d.historical_activity || { records: [], changes: [] });
   }).catch(() => {});
-  };
-  // Initial report intentionally uses the blank (all earlier dates) range.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load({ from: '', to: '' }); }, []);
+  useEffect(() => { load(); }, []);
 
   useEffect(() => {
     const journalId = Number(reverseForm.journal_id);
@@ -259,37 +256,6 @@ export default function CorrectionsPage() {
             </tbody>
           </table>
         </div>
-
-        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-          <div className="flex flex-col gap-3 border-b border-gray-200 px-5 py-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="flex items-start gap-3">
-              <div className="rounded-lg bg-indigo-50 p-2 text-indigo-700"><History className="h-4 w-4" /></div>
-              <div><h2 className="text-sm font-semibold text-gray-900">Previous-day activity</h2><p className="mt-0.5 text-xs text-gray-500">Records belong to the effective day; changes show when an older day was touched later.</p></div>
-            </div>
-            <div className="flex flex-wrap items-end gap-2">
-              <Field label="From"><input type="date" value={activityFilters.from} onChange={(e) => setActivityFilters((f) => ({ ...f, from: e.target.value }))} className="h-9 rounded-lg border border-gray-300 px-2 text-xs" /></Field>
-              <Field label="To"><input type="date" value={activityFilters.to} onChange={(e) => setActivityFilters((f) => ({ ...f, to: e.target.value }))} className="h-9 rounded-lg border border-gray-300 px-2 text-xs" /></Field>
-              <button type="button" onClick={() => load(activityFilters)} className="h-9 rounded-lg bg-gray-900 px-4 text-xs font-semibold text-white hover:bg-gray-800">Apply</button>
-            </div>
-          </div>
-
-          <div className="grid divide-y divide-gray-200 xl:grid-cols-2 xl:divide-x xl:divide-y-0">
-            <ActivityTable
-              title={`Earlier-date records (${historicalActivity.records?.length || 0})`}
-              empty="No earlier purchases or expenses in this range."
-              rows={historicalActivity.records || []}
-              kind="records"
-            />
-            <ActivityTable
-              title={`Later changes to earlier dates (${historicalActivity.changes?.length || 0})`}
-              empty="No later changes to earlier dates in this range."
-              rows={historicalActivity.changes || []}
-              kind="changes"
-              onOpen={setActivityDetail}
-            />
-          </div>
-          {historicalActivity.truncated && <p className="border-t border-amber-200 bg-amber-50 px-5 py-2 text-xs text-amber-800">Showing the newest 500 matching rows. Narrow the date range to review older activity.</p>}
-        </div>
       </div>
       {confirmation && <ConfirmationDialog
         confirmation={confirmation}
@@ -298,54 +264,8 @@ export default function CorrectionsPage() {
         onConfirm={() => post(confirmation.body, confirmation.done)}
       />}
       {historyDetail && <HistoryDetail detail={historyDetail} onClose={() => setHistoryDetail(null)} />}
-      {activityDetail && <ActivityDetail row={activityDetail} onClose={() => setActivityDetail(null)} />}
     </AdminLayout>
   );
-}
-
-function ActivityTable({ title, rows, kind, empty, onOpen }) {
-  return <section className="min-w-0">
-    <h3 className="border-b border-gray-100 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</h3>
-    <div className="max-h-[30rem] overflow-auto">
-      <table className="w-full min-w-[620px] text-xs">
-        <thead className="sticky top-0 z-10 bg-gray-50 text-gray-500"><tr><th className="px-4 py-2 text-left">Effective day</th><th className="px-4 py-2 text-left">{kind === 'changes' ? 'Action' : 'Record'}</th><th className="px-4 py-2 text-left">Reference</th><th className="px-4 py-2 text-right">Amount</th><th className="px-4 py-2 text-right">{kind === 'changes' ? 'Actually changed' : 'Entered'}</th></tr></thead>
-        <tbody className="divide-y divide-gray-100">
-          {rows.map((row) => <tr key={row.change_id || `${row.record_type}-${row.record_id}`} onClick={() => onOpen?.(row)} className={onOpen ? 'cursor-pointer hover:bg-indigo-50/40' : 'hover:bg-gray-50'}>
-            <td className="whitespace-nowrap px-4 py-2.5 font-medium text-gray-800">{formatNepalDisplay(row.effective_date)}</td>
-            <td className="px-4 py-2.5"><span className="rounded bg-gray-100 px-1.5 py-0.5 font-semibold uppercase text-gray-700">{kind === 'changes' ? String(row.action).replaceAll('_', ' ') : row.record_type}</span>{kind === 'records' && <span className="ml-2 capitalize text-gray-500">{row.status}</span>}</td>
-            <td className="max-w-48 truncate px-4 py-2.5 text-gray-700" title={row.party || row.reference}>{row.reference}{row.party ? ` · ${row.party}` : ''}</td>
-            <td className="whitespace-nowrap px-4 py-2.5 text-right font-semibold tabular-nums text-gray-800">{row.amount == null ? '—' : money(row.amount)}</td>
-            <td className="whitespace-nowrap px-4 py-2.5 text-right text-gray-500">{formatNepalTime(row.created_at)}{row.by_name ? <span className="block">{row.by_name}</span> : null}</td>
-          </tr>)}
-          {!rows.length && <tr><td colSpan={5} className="px-5 py-10 text-center text-gray-500">{empty}</td></tr>}
-        </tbody>
-      </table>
-    </div>
-  </section>;
-}
-
-function ActivityDetail({ row, onClose }) {
-  return <div className="fixed inset-0 z-[110] flex items-center justify-center bg-gray-950/50 p-4" role="dialog" aria-modal="true" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-2xl border border-gray-200 bg-white shadow-2xl">
-      <div className="sticky top-0 z-10 flex items-start justify-between border-b border-gray-200 bg-white px-5 py-4"><div><p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">{String(row.action || 'change').replaceAll('_', ' ')}</p><h3 className="mt-1 text-lg font-bold text-gray-950">{row.reference}</h3></div><button type="button" onClick={onClose} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"><X className="h-4 w-4" /></button></div>
-      <div className="space-y-4 p-5">
-        <div className="grid gap-4 sm:grid-cols-3"><PreviewValue label="Effective business day" value={formatNepalDisplay(row.effective_date)} /><PreviewValue label="Action performed" value={formatNepalTime(row.created_at)} /><PreviewValue label="Performed by" value={row.by_name || 'Not recorded'} /></div>
-        {row.note && <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900"><p className="text-xs font-semibold uppercase text-amber-700">Note</p><p className="mt-1">{row.note}</p></div>}
-        {(row.before_data || row.after_data) && <div className="grid gap-4 md:grid-cols-2"><Snapshot title="Before" data={row.before_data} /><Snapshot title="After" data={row.after_data} /></div>}
-      </div>
-    </div>
-  </div>;
-}
-
-function Snapshot({ title, data }) {
-  if (!data) return <div className="rounded-xl border border-gray-200 p-4"><p className="text-xs font-semibold uppercase text-gray-500">{title}</p><p className="mt-3 text-sm text-gray-400">No record</p></div>;
-  const fields = [
-    ['Invoice', data.invoice_number], ['Invoice date', data.invoice_date], ['Supplier', data.supplier],
-    ['Total', data.total == null ? null : money(data.total)], ['Status', data.status],
-    ['Payment', data.payment_method || data.expense?.payment_method], ['Notes', data.notes],
-    ['Items', Array.isArray(data.items) ? `${data.items.length} line(s)` : null],
-  ].filter(([, value]) => value !== null && value !== undefined && value !== '');
-  return <div className="rounded-xl border border-gray-200 p-4"><p className="text-xs font-semibold uppercase text-gray-500">{title}</p><dl className="mt-3 space-y-2">{fields.map(([label, value]) => <div key={label} className="flex justify-between gap-4 text-sm"><dt className="text-gray-500">{label}</dt><dd className="max-w-[65%] text-right font-medium text-gray-800">{String(value)}</dd></div>)}</dl></div>;
 }
 
 function HistoryDetail({ detail, onClose }) {

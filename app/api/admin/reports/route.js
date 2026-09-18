@@ -35,11 +35,13 @@ export async function GET(request) {
       // Default matches the page's own default: today, not a trailing week.
       searchParams.get('period') || 'today',
       searchParams.get('startDate'),
-      searchParams.get('endDate')
+      searchParams.get('endDate'),
+      { calendarSystem: searchParams.get('calendarSystem') }
     );
 
     const tablePaging = parseReportTablePaging(searchParams);
     const filters = {
+      calendarSystem: searchParams.get('calendarSystem') === 'BS' ? 'BS' : 'AD',
       businessDayId: Number(searchParams.get('businessDayId')) || null,
       employeeId: Number(searchParams.get('employeeId')) || null,
       paymentMethod: searchParams.get('paymentMethod') || null,

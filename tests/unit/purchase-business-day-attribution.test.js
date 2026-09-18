@@ -47,6 +47,7 @@ test('late entry and later edits keep a purchase on its invoice-date business da
       invoice_date: invoiceDate,
       payment_method: 'cash',
       received_by: actor.id,
+      performed_by: actor.id,
       items: [{ inventory_item_id: item.lastInsertRowid, quantity: 1, unit_cost: 100 }],
     });
     const expense = await db.get('SELECT * FROM expenses WHERE id=?', [purchase.expense_id]);
@@ -96,7 +97,8 @@ test('late entry and later edits keep a purchase on its invoice-date business da
     const record = activity.records.find((row) => row.record_type === 'purchase' && Number(row.record_id) === Number(purchase.id));
     const purchaseChanges = activity.changes.filter((row) => Number(row.purchase_id) === Number(purchase.id));
     assert.equal(record.effective_date, invoiceDate);
-    assert.deepEqual(purchaseChanges.map((row) => row.action).sort(), ['created', 'edited']);
+    assert.equal(Number(purchaseChanges.find((row) => row.action === 'created').performed_by), actor.id);
+    assert.deepEqual(purchaseChanges.map((row) => row.action).sort(), ['amount corrected', 'created', 'edited']);
     assert.equal(Number(purchaseChanges.find((row) => row.action === 'edited').before_data.total), 100);
     assert.equal(Number(purchaseChanges.find((row) => row.action === 'edited').after_data.total), 150);
 
@@ -109,6 +111,8 @@ test('late entry and later edits keep a purchase on its invoice-date business da
         .filter((row) => Number(row.purchase_id) === Number(purchase.id))
         .map((row) => row.action)
         .sort(),
+      // Edit-correction journals are removed with the linked expense on hard delete;
+      // purchase_change_audit still retains created/edited/voided/deleted.
       ['created', 'deleted', 'edited', 'voided']
     );
   } finally {

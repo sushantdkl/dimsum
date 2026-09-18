@@ -3,7 +3,6 @@ import Database from '@/lib/db/index';
 import { requireAuth, handleRouteError } from '@/lib/api-guard.js';
 import { ensureAccountingSchema } from '@/lib/accounting.js';
 import { listCorrections } from '@/lib/accounting-corrections.js';
-import { listHistoricalActivity } from '@/lib/historical-activity.js';
 import {
   voidPaidBill,
   refundBill,
@@ -22,19 +21,13 @@ export async function GET(request) {
     if (q.get('journal_id')) {
       return NextResponse.json(await getCorrectionJournalPreview(db, q.get('journal_id')));
     }
-    const [corrections, billCorrections, historicalActivity] = await Promise.all([
+    const [corrections, billCorrections] = await Promise.all([
       listCorrections(db),
       listBillCorrections(db),
-      listHistoricalActivity(db, {
-        from: q.get('from'),
-        to: q.get('to'),
-        limit: q.get('limit'),
-      }),
     ]);
     return NextResponse.json({
       corrections,
       bill_corrections: billCorrections,
-      historical_activity: historicalActivity,
     });
   } catch (error) {
     return handleRouteError(error, 'Failed to load corrections');

@@ -42,6 +42,14 @@ test('cash count becomes due at the configured Nepal-time boundary without expos
   assert.doesNotMatch(JSON.stringify(status), /expected/i);
 });
 
+test('security count never blocks waiter, kitchen or admin roles', async () => {
+  for (const role of ['waiter', 'kitchen', 'admin']) {
+    const status = await scheduledCashCountStatus(null, { id: 9900, role }, due);
+    assert.equal(status.enabled, false, `${role} must bypass the cashier-only control`);
+    assert.equal(status.due, false, `${role} must never receive a cash-count lock`);
+  }
+});
+
 test('midday count schedule is independent from the original expected-cash reveal schedule', async () => {
   await db.run(`UPDATE system_settings SET setting_value='false' WHERE setting_key='cashier_cash_count_schedule_enabled'`);
   await db.run(`INSERT INTO system_settings(setting_key, setting_value) VALUES ('cashier_expected_cash_schedule_enabled', 'true')

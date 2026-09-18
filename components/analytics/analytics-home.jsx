@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { analyticsReportHref } from '@/lib/analytics-links';
 
 import {
-  Banknote, Bike, ClipboardList, Coins, CreditCard, Gift, Landmark, Percent,
+  Banknote, Bike, ClipboardList, Coins, CreditCard, Gift, Landmark, PiggyBank,
   ShoppingBag, ShoppingCart, Star, Tag, TrendingUp, Undo2, User, Users,
   UtensilsCrossed, Wallet,
 } from 'lucide-react';
@@ -108,7 +108,13 @@ export function OwnerMoneyMetrics({ data, panelPrefix = '/admin' }) {
     { label: 'Discounts', value: totals.discounts, detail: 'Discounts given to customers', icon: Tag, iconTone: 'rose' },
     { label: 'Service / Extra Charges', value: serviceExtra, detail: 'Service and checkout extras', icon: UtensilsCrossed, iconTone: 'teal' },
     { label: 'Delivery Charges', value: totals.deliveryFee, detail: 'Delivery fees billed', icon: Bike, iconTone: 'teal' },
-    { label: 'Tax Collected', value: totals.tax, detail: 'Tax included in customer bills', icon: Percent, iconTone: 'teal' },
+    {
+      label: 'Savings & Deposits',
+      value: finance.totalDeposits,
+      detail: `${number(finance.depositCount)} deposit${Number(finance.depositCount || 0) === 1 ? '' : 's'} this period`,
+      icon: PiggyBank,
+      iconTone: 'slate',
+    },
     { label: 'Refunds', value: totals.refunds, detail: 'Money returned to customers', icon: Undo2, iconTone: 'rose' },
     { label: 'Purchases', value: inventory.purchaseValue, detail: `${number(inventory.purchases)} purchase records`, icon: ShoppingCart, iconTone: 'rose' },
     { label: 'Expenses', value: data.suppliers?.purchasing?.expenses?.total ?? finance.operatingExpenses, detail: 'Manual and non-purchase operating expenses', icon: CreditCard, iconTone: 'rose' },

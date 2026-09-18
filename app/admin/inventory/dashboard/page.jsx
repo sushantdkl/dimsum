@@ -7,6 +7,7 @@ import AdminLayout from '@/components/admin/admin-layout';
 import { formatValue } from '@/components/admin/report-kit';
 import { formatNepalDateTime } from '@/lib/report-dates.js';
 import { formatCalendarRangeLabel } from '@/lib/calendar-system.js';
+import { useCalendarSystem } from '@/lib/calendar-context.jsx';
 import {
   Package, AlertTriangle, XCircle, CheckCircle2, TrendingUp, TrendingDown,
   RotateCcw, Search, Trash2, ArrowDownUp, PackagePlus, AlertCircle, Info, ExternalLink,
@@ -33,6 +34,7 @@ const STATUS_META = {
 };
 
 export default function InventoryDashboardPage() {
+  const { calendarSystem } = useCalendarSystem();
   const pathname = usePathname();
   const inventoryBase = pathname?.startsWith('/cashier') ? '/cashier/inventory' : '/admin/inventory';
   const [period, setPeriod] = useState('week');
@@ -48,7 +50,7 @@ export default function InventoryDashboardPage() {
     setError(null);
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('pos_token') : null;
-      const qs = new URLSearchParams({ period });
+      const qs = new URLSearchParams({ period, calendarSystem });
       if (category) qs.set('category', category);
       if (status) qs.set('status', status);
       if (search) qs.set('search', search);
@@ -62,7 +64,7 @@ export default function InventoryDashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [period, category, status, search]);
+  }, [period, category, status, search, calendarSystem]);
 
   useEffect(() => {
     const t = setTimeout(load, search ? 300 : 0);

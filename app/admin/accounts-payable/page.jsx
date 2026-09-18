@@ -13,6 +13,7 @@ import LedgerTable, { money } from '@/components/accounting/ledger-table';
 import { adminInputClass } from '@/components/ui/admin-form';
 import DateInput from '@/components/ui/date-input.jsx';
 import { resolvePeriodRange, formatNepalDisplay } from '@/lib/report-dates';
+import { useCalendarSystem } from '@/lib/calendar-context.jsx';
 
 const PERIODS = [
   { id: 'all', label: 'All Time' },
@@ -28,6 +29,7 @@ function newKey() {
 }
 
 export default function AccountsPayablePage() {
+  const { calendarSystem } = useCalendarSystem();
   const pathname = usePathname();
   const suppliersPath = pathname?.startsWith('/cashier') ? '/cashier/suppliers' : '/admin/suppliers';
   const { addToast } = useToast();
@@ -73,7 +75,7 @@ export default function AccountsPayablePage() {
   const choosePeriod = (id) => {
     setPeriod(id);
     if (id === 'all') { setFrom(''); setTo(''); return; }
-    const range = resolvePeriodRange(id);
+    const range = resolvePeriodRange(id, null, null, { calendarSystem });
     setFrom(range.start); setTo(range.end);
   };
   const editFrom = (v) => { setFrom(v); setPeriod('custom'); };
@@ -82,7 +84,7 @@ export default function AccountsPayablePage() {
   const chooseHistoryPeriod = (id) => {
     setHistoryPeriod(id);
     if (id === 'all') { setHistoryFrom(''); setHistoryTo(''); return; }
-    const range = resolvePeriodRange(id);
+    const range = resolvePeriodRange(id, null, null, { calendarSystem });
     setHistoryFrom(range.start); setHistoryTo(range.end);
   };
   const editHistoryFrom = (v) => { setHistoryFrom(v); setHistoryPeriod('custom'); };

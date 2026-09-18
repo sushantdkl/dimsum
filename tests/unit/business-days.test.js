@@ -197,6 +197,16 @@ test('over cash close is rejected without a closing note, accepted with one', as
 
   const result = await closeBusinessDay(db, { counted_cash: 7200, closing_note: 'Extra tip pooled in drawer' }, admin, { force: false });
   assert.equal(Number(result.business_day.cash_difference), 200);
+  const overJournal = await db.get(
+    `SELECT id FROM journal_entries WHERE source_type='business_day_close' ORDER BY id DESC LIMIT 1`
+  );
+  assert.ok(overJournal, 'cash over must post a business_day_close journal');
+  const overLines = await db.all(
+    `SELECT a.code, jl.debit, jl.credit FROM journal_lines jl JOIN accounts a ON a.id=jl.account_id WHERE jl.journal_id=?`,
+    [overJournal.id]
+  );
+  assert.ok(overLines.some((l) => l.code === '5060' && Number(l.credit) === 200));
+  assert.ok(overLines.some((l) => l.code === '1010' && Number(l.debit) === 200));
 });
 
 test('missing opening cash movement reason is rejected when opening cash differs from prior counted cash', async () => {
@@ -234,6 +244,16 @@ test('short cash close is rejected without a closing note, accepted with one', a
 
   const result = await closeBusinessDay(db, { counted_cash: 5800, closing_note: 'Till was short at count' }, admin, { force: false });
   assert.equal(Number(result.business_day.cash_difference), -200);
+  const shortJournal = await db.get(
+    `SELECT id FROM journal_entries WHERE source_type='business_day_close' ORDER BY id DESC LIMIT 1`
+  );
+  assert.ok(shortJournal, 'cash short must post a business_day_close journal');
+  const shortLines = await db.all(
+    `SELECT a.code, jl.debit, jl.credit FROM journal_lines jl JOIN accounts a ON a.id=jl.account_id WHERE jl.journal_id=?`,
+    [shortJournal.id]
+  );
+  assert.ok(shortLines.some((l) => l.code === '5060' && Number(l.debit) === 200));
+  assert.ok(shortLines.some((l) => l.code === '1010' && Number(l.credit) === 200));
 });
 
 /* ------------------------------------------------------------ closing blockers */

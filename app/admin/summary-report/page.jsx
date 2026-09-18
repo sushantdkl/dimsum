@@ -6,6 +6,7 @@ import { Printer, RefreshCw } from 'lucide-react';
 import { apiJson } from '@/lib/authed-fetch';
 import { formatNepalDateTime, formatNepalDisplay, nepalDateString } from '@/lib/report-dates';
 import DateInput from '@/components/ui/date-input.jsx';
+import { useCalendarSystem } from '@/lib/calendar-context.jsx';
 import {
   Account, CashFlowCard, Category, CountedCash, DigitalReceipts, ExchangeCard,
   MoneyPosition, PrintColorStyle, QuantitySummary, ReportGroup, ReportHeader,
@@ -13,10 +14,11 @@ import {
 } from '@/components/admin/summary-kit.jsx';
 
 export default function SummaryReportPage(){
+  const {calendarSystem}=useCalendarSystem();
   const today=nepalDateString();
   const [period,setPeriod]=useState('today'); const [from,setFrom]=useState(today); const [to,setTo]=useState(today);
   const [data,setData]=useState(null); const [loading,setLoading]=useState(true); const [error,setError]=useState('');
-  const load=useCallback(async(p=period)=>{setLoading(true);setError('');try{const query=p==='custom'?`period=custom&startDate=${from}&endDate=${to}`:`period=${p}`;setData(await apiJson(`/api/admin/summary-report?${query}`));}catch(e){setError(e.message||'Could not load report.');}finally{setLoading(false)}},[period,from,to]);
+  const load=useCallback(async(p=period)=>{setLoading(true);setError('');try{const params=new URLSearchParams({period:p,calendarSystem});if(p==='custom'){params.set('startDate',from);params.set('endDate',to)}setData(await apiJson(`/api/admin/summary-report?${params}`));}catch(e){setError(e.message||'Could not load report.');}finally{setLoading(false)}},[period,from,to,calendarSystem]);
   useEffect(()=>{load()},[]); // eslint-disable-line react-hooks/exhaustive-deps
   const choose=(p)=>{setPeriod(p);setTimeout(()=>load(p),0)};
   const d=data;

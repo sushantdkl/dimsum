@@ -88,6 +88,24 @@ test('a custom range given backwards is corrected, not left inverted', () => {
   assert.equal(r.end, '2026-08-20');
 });
 
+test('BS presets use Bikram Sambat boundaries before converting to canonical AD', () => {
+  const options = { calendarSystem: 'BS', now: new Date('2026-09-16T06:00:00.000Z') };
+  const month = resolvePeriodRange('this_month', null, null, options);
+  assert.deepEqual({ start: month.start, end: month.end }, { start: '2026-08-17', end: '2026-09-16' });
+  assert.equal(resolvePeriodRange('year', null, null, options).start, '2026-04-14');
+  assert.equal(resolvePeriodRange('quarter', null, null, options).start, '2026-07-17');
+  assert.equal(resolvePeriodRange('this_week', null, null, options).start, '2026-09-12');
+  assert.match(month.label, /2083-05-01 BS/);
+});
+
+test('AD presets retain Gregorian boundaries when AD is selected', () => {
+  const options = { calendarSystem: 'AD', now: new Date('2026-09-16T06:00:00.000Z') };
+  assert.equal(resolvePeriodRange('this_month', null, null, options).start, '2026-09-01');
+  assert.equal(resolvePeriodRange('year', null, null, options).start, '2026-01-01');
+  assert.equal(resolvePeriodRange('quarter', null, null, options).start, '2026-07-01');
+  assert.equal(resolvePeriodRange('this_week', null, null, options).start, '2026-09-14');
+});
+
 /* ---- host desk boards ------------------------------------------- */
 
 test('reservation board boundaries come from the Nepal calendar, not the host', async () => {

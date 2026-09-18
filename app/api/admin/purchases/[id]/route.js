@@ -14,7 +14,6 @@ export async function GET(request, { params }) {
     const { id } = await params;
     const db = Database.getInstance();
     await ensureRecipeTables(db);
-
     const purchase = await getPurchase(db, id);
     if (!purchase) return NextResponse.json({ error: 'Purchase not found.' }, { status: 404 });
     return NextResponse.json({ purchase });
@@ -32,6 +31,11 @@ export async function PUT(request, { params }) {
     const data = await request.json();
     const db = Database.getInstance();
     await ensureRecipeTables(db);
+    const existingPurchase = await getPurchase(db, id);
+    if (!existingPurchase) return NextResponse.json({ error: 'Purchase not found.' }, { status: 404 });
+    if (existingPurchase.expense?.business_day_status === 'closed' && String(data.change_reason || '').trim().length < 3) {
+      return NextResponse.json({ error: 'Enter a clear reason for correcting this closed purchase.' }, { status: 400 });
+    }
     const supplierName = data.supplier || data.supplier_name;
     if (auth.user?.role === 'cashier' && String(supplierName || '').trim()) {
       const existingSupplier = await db.get(
